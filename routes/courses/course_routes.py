@@ -181,13 +181,30 @@ def create_course(
 def get_all_courses(
     skip: int = 0,
     limit: int = 100,
+    sort_by_general_fees: bool = False,
     db: Session = Depends(get_db)
 ):
     """
     Get all courses with optional filters
     """
     query = db.query(Course)
-    courses = query.offset(skip).limit(limit).all()
+    # If sorting by general fees requested, fetch all, sort in-memory, then apply pagination
+    if sort_by_general_fees:
+        import json
+        courses = query.all()
+        def _fees_key(c):
+            try:
+                g = c.general_data or {}
+                if isinstance(g, str):
+                    g = json.loads(g)
+                return float(g.get("course_fees") or 0)
+            except Exception:
+                return 0.0
+        courses.sort(key=_fees_key, reverse=True)
+        # apply pagination after sorting
+        courses = courses[skip: skip + limit if limit is not None else None]
+    else:
+        courses = query.offset(skip).limit(limit).all()
     # Convert absolute paths to relative for response
     for c in courses:
         if c.course_photo and os.path.isabs(c.course_photo):
