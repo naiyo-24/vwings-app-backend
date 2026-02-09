@@ -181,30 +181,50 @@ def create_course(
 def get_all_courses(
     skip: int = 0,
     limit: int = 100,
-    sort_by_general_fees: bool = False,
+    sort_by_general_fees: bool = True,
+    min_fee: Optional[float] = None,
+    max_fee: Optional[float] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Get all courses with optional filters
+    Get all courses with optional filters (min_fee, max_fee) and optional sorting by general fees.
+    Filtering and sorting operate on `general_data.course_fees`.
     """
+    import json
     query = db.query(Course)
-    # If sorting by general fees requested, fetch all, sort in-memory, then apply pagination
+    # Load all rows into memory to support filtering on JSON-like `general_data` field
+    courses = query.all()
+
+    def _get_fees(c):
+        try:
+            g = c.general_data or {}
+            if isinstance(g, str):
+                g = json.loads(g)
+            return float(g.get("course_fees") or 0)
+        except Exception:
+            return 0.0
+
+    # Apply min/max fee filters (if provided)
+    if min_fee is not None or max_fee is not None:
+        filtered = []
+        for c in courses:
+            fee = _get_fees(c)
+            if min_fee is not None and fee < min_fee:
+                continue
+            if max_fee is not None and fee > max_fee:
+                continue
+            filtered.append(c)
+        courses = filtered
+
+    # Apply sorting by general fees (descending) by default
     if sort_by_general_fees:
-        import json
-        courses = query.all()
-        def _fees_key(c):
-            try:
-                g = c.general_data or {}
-                if isinstance(g, str):
-                    g = json.loads(g)
-                return float(g.get("course_fees") or 0)
-            except Exception:
-                return 0.0
-        courses.sort(key=_fees_key, reverse=True)
-        # apply pagination after sorting
-        courses = courses[skip: skip + limit if limit is not None else None]
+        courses.sort(key=_get_fees, reverse=True)
+
+    # apply pagination after filtering/sorting
+    if limit is not None:
+        courses = courses[skip: skip + limit]
     else:
-        courses = query.offset(skip).limit(limit).all()
+        courses = courses[skip:]
     # Convert absolute paths to relative for response
     for c in courses:
         if c.course_photo and os.path.isabs(c.course_photo):
