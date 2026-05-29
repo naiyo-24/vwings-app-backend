@@ -11,6 +11,8 @@ from models.auth.counsellor_models import Counsellor
 from models.admission.admission_code_models import AdmissionCode
 from models.courses.course_models import Course
 from services.admission_enquiry_id_generator import generate_admission_enquiry_id
+from models.auth.student_models import Student
+from services.student_id_generator import generate_student_id
 
 router = APIRouter(prefix="/api/admission-enquiries", tags=["AdmissionEnquiries"])
 
@@ -118,6 +120,30 @@ def create_admission_enquiry(payload: AdmissionEnquiryCreate, db: Session = Depe
         updated_at=now,
     )
     db.add(enq)
+    
+    # If the enquiry is being created as 'converted', create the student as well
+    if enq.status == "converted":
+        student_id = generate_student_id(now)
+        student_email = str(payload.student_email) if payload.student_email else f"{student_id.lower()}@vwings.com"
+        
+        # Check if email is already taken
+        existing_student = db.query(Student).filter_by(email=student_email).first()
+        if not existing_student:
+            new_student = Student(
+                student_id=student_id,
+                full_name=payload.student_name,
+                phone_no=payload.student_phn_no,
+                email=student_email,
+                address=payload.student_address or "N/A",
+                guardian_name=payload.guardian_name or "N/A",
+                guardian_mobile_no=payload.guardian_phn_no or "N/A",
+                course_availing=payload.course_id,
+                password=payload.student_phn_no, # Default password is phone number
+                created_at=now,
+                updated_at=now
+            )
+            db.add(new_student)
+
     db.commit()
     db.refresh(enq)
     data = {k: v for k, v in enq.__dict__.items() if not k.startswith("_")}
@@ -171,6 +197,36 @@ def update_enquiry_status(enquiry_id: str, payload: AdmissionEnquiryStatusUpdate
     item = db.query(AdmissionEnquiry).filter_by(enquiry_id=enquiry_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Admission enquiry not found")
+    # Check if we need to create or delete a student
+    if item.status == "converted" and payload.status != "converted":
+        # Delete student if it was converted and is now changing to something else
+        # Find student by email or phone_no
+        search_email = item.student_email if item.student_email else ""
+        student = db.query(Student).filter((Student.email == search_email) | (Student.phone_no == item.student_phn_no)).first()
+        if student:
+            db.delete(student)
+            
+    elif item.status != "converted" and payload.status == "converted":
+        # Create student since status is becoming converted
+        student_id = generate_student_id(datetime.utcnow())
+        student_email = item.student_email if item.student_email else f"{student_id.lower()}@vwings.com"
+        existing_student = db.query(Student).filter((Student.email == student_email) | (Student.phone_no == item.student_phn_no)).first()
+        if not existing_student:
+            new_student = Student(
+                student_id=student_id,
+                full_name=item.student_name,
+                phone_no=item.student_phn_no,
+                email=student_email,
+                address=item.student_address or "N/A",
+                guardian_name=item.guardian_name or "N/A",
+                guardian_mobile_no=item.guardian_phn_no or "N/A",
+                course_availing=item.course_id,
+                password=item.student_phn_no,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(new_student)
+
     item.status = payload.status
     item.updated_at = datetime.utcnow()
     db.add(item)
@@ -251,8 +307,34 @@ def update_enquiry(enquiry_id: str, payload: AdmissionEnquiryUpdate, db: Session
         if hasattr(item, field) and field not in ("counsellor_id", "admission_code"):
             setattr(item, field, value)
 
-    # update status if provided
-    if payload.status is not None:
+    # Check if we need to create or delete a student based on status change
+    if payload.status is not None and payload.status != item.status:
+        if item.status == "converted" and payload.status != "converted":
+            search_email = item.student_email if item.student_email else ""
+            student = db.query(Student).filter((Student.email == search_email) | (Student.phone_no == item.student_phn_no)).first()
+            if student:
+                db.delete(student)
+        elif item.status != "converted" and payload.status == "converted":
+            student_id = generate_student_id(datetime.utcnow())
+            student_email = payload.student_email if payload.student_email else (item.student_email if item.student_email else f"{student_id.lower()}@vwings.com")
+            student_phn = payload.student_phn_no if payload.student_phn_no else item.student_phn_no
+            existing_student = db.query(Student).filter((Student.email == student_email) | (Student.phone_no == student_phn)).first()
+            if not existing_student:
+                new_student = Student(
+                    student_id=student_id,
+                    full_name=payload.student_name if payload.student_name else item.student_name,
+                    phone_no=student_phn,
+                    email=student_email,
+                    address=(payload.student_address if payload.student_address else item.student_address) or "N/A",
+                    guardian_name=(payload.guardian_name if payload.guardian_name else item.guardian_name) or "N/A",
+                    guardian_mobile_no=(payload.guardian_phn_no if payload.guardian_phn_no else item.guardian_phn_no) or "N/A",
+                    course_availing=payload.course_id if payload.course_id else item.course_id,
+                    password=student_phn,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(new_student)
+        
         item.status = payload.status
 
     item.updated_at = datetime.utcnow()

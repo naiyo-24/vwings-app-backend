@@ -97,6 +97,12 @@ def get_commissions_for_counsellor(counsellor_id: str, db: Session = Depends(get
     return commissions
 
 
+@router.get("/get-all", response_model=List[CommissionOut])
+def get_all_commissions(db: Session = Depends(get_db)):
+    commissions = db.query(CommissionSlip).order_by(CommissionSlip.year.desc(), CommissionSlip.month.desc()).all()
+    return commissions
+
+
 # Download commission slip PDF by counsellor id, month, and year
 @router.get("/download/{counsellor_id}/{month}/{year}")
 def download_commission(counsellor_id: str, month: int, year: int, db: Session = Depends(get_db)):

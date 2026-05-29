@@ -13,11 +13,13 @@ class AnnouncementCreate(BaseModel):
 	headline: str
 	description: str
 	role: Optional[str] = "student"
+	target_id: Optional[str] = None
 	active_status: Optional[bool] = True
 
 class AnnouncementUpdate(BaseModel):
 	headline: Optional[str]
 	description: Optional[str]
+	target_id: Optional[str]
 	active_status: Optional[bool]
 
 class AnnouncementOut(BaseModel):
@@ -25,6 +27,7 @@ class AnnouncementOut(BaseModel):
 	headline: str
 	description: str
 	role: str
+	target_id: Optional[str] = None
 	active_status: bool
 	created_at: datetime
 	updated_at: datetime

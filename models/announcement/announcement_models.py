@@ -10,6 +10,7 @@ class Announcement(Base):
 	description = Column(Text, nullable=False)
 	# role: which audience this announcement is for (student, counsellor, teacher)
 	role = Column(String(50), nullable=False, default="student")
+	target_id = Column(String(50), nullable=True, default=None)
 	active_status = Column(Boolean, default=True)
 	created_at = Column(DateTime, default=datetime.utcnow)
 	updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

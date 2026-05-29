@@ -56,6 +56,7 @@ class StudentOut(StudentBase):
 	created_at: datetime
 	updated_at: datetime
 	course_name: Optional[str] = None
+	counsellor_id: Optional[str] = None
 
 	class Config:
 		from_attributes = True
@@ -162,7 +163,12 @@ def get_all_students(db: Session = Depends(get_db)):
 				profile_photo_path = os.path.relpath(str(Path(s.profile_photo)), os.getcwd())
 			except Exception:
 				profile_photo_path = s.profile_photo
-		result.append(StudentOut(**{**s.__dict__, "profile_photo": profile_photo_path}, course_name=course_name))
+				
+		from models.admission.admission_enquiry_models import AdmissionEnquiry
+		enquiry = db.query(AdmissionEnquiry).filter((AdmissionEnquiry.student_email == s.email) | (AdmissionEnquiry.student_phn_no == s.phone_no), AdmissionEnquiry.status == "converted").first()
+		counsellor_id = enquiry.counsellor_id if enquiry else None
+
+		result.append(StudentOut(**{**s.__dict__, "profile_photo": profile_photo_path}, course_name=course_name, counsellor_id=counsellor_id))
 	return result
 
 # Get student by ID

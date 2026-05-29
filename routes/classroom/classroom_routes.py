@@ -6,6 +6,7 @@ from db import get_db
 from models.classroom.classroom_models import Classroom
 from models.auth.student_models import Student
 from models.auth.teacher_models import Teacher
+from models.announcement.announcement_models import Announcement
 from services.class_id_generator import generate_class_id
 from typing import List, Optional
 from datetime import datetime
@@ -206,7 +207,26 @@ async def update_classroom_by_teacher(
     if class_description is not None:
         classroom.class_description = class_description
     if student_ids is not None:
-        classroom.student_ids = json.loads(student_ids)
+        new_student_ids = json.loads(student_ids)
+        existing_student_ids = classroom.student_ids or []
+        added_students = list(set(new_student_ids) - set(existing_student_ids))
+        
+        classroom.student_ids = new_student_ids
+        
+        if added_students:
+            teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+            teacher_name = teacher.full_name if teacher else "a teacher"
+            for s_id in added_students:
+                headline = f"New Classroom Assigned: {classroom.class_name}"
+                description = f"You have been assigned to {classroom.class_name} by {teacher_name}. Please check your Classrooms tab for upcoming sessions."
+                ann = Announcement(
+                    headline=headline,
+                    description=description,
+                    role="student",
+                    target_id=s_id,
+                    active_status=True
+                )
+                db.add(ann)
     if photo:
         photo_path = await save_class_photo(class_id, photo)
         classroom.class_photo = photo_path
