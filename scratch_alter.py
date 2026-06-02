@@ -15,8 +15,10 @@ engine = create_engine(DATABASE_URL)
 
 try:
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE announcements ADD COLUMN target_id VARCHAR(50);"))
+        conn.execute(text("ALTER TABLE classrooms ADD COLUMN meet_link VARCHAR;"))
+        conn.execute(text("ALTER TABLE classrooms ADD COLUMN class_date VARCHAR;"))
+        conn.execute(text("ALTER TABLE classrooms ADD COLUMN class_time VARCHAR;"))
         conn.commit()
-    print("Successfully added target_id column.")
+    print("Successfully added columns to classrooms.")
 except Exception as e:
     print(f"Error: {e}")

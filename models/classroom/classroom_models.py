@@ -11,6 +11,9 @@ class Classroom(Base):
 	class_name = Column(String, nullable=False)
 	class_description = Column(String, nullable=True)
 	class_photo = Column(String, nullable=True)  # Path to photo file
+	meet_link = Column(String, nullable=True)
+	class_date = Column(String, nullable=True)
+	class_time = Column(String, nullable=True)
 	# List of teacher ids (stored as JSON array). Use application-level checks to enforce referential integrity.
 	teacher_ids = Column(MutableList.as_mutable(JSON), nullable=True)
 	# Admin who created/owns the class (FK to admins.id)

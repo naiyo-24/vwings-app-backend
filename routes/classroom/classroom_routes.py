@@ -27,6 +27,9 @@ class ClassroomResponse(BaseModel):
     class_name: str
     class_description: Optional[str] = None
     class_photo: Optional[str] = None
+    meet_link: Optional[str] = None
+    class_date: Optional[str] = None
+    class_time: Optional[str] = None
     teacher_ids: Optional[List[str]] = None
     student_ids: Optional[List[str]] = None
     teacher_details: Optional[List[dict]] = None
@@ -70,6 +73,8 @@ async def create_classroom(
     class_description: str = Form(None),
     teacher_ids: Optional[str] = Form(None),  # JSON string
     student_ids: Optional[str] = Form(None),  # JSON string
+    class_date: Optional[str] = Form(None),
+    class_time: Optional[str] = Form(None),
     admin_id: Optional[str] = Form(None),
     photo: UploadFile = File(None),
     db: Session = Depends(get_db)
@@ -89,6 +94,9 @@ async def create_classroom(
             class_name=class_name,
             class_description=class_description,
             class_photo=photo_path,
+            meet_link=None,
+            class_date=class_date,
+            class_time=class_time,
             teacher_ids=t_ids,
             student_ids=s_ids,
             admin_id=admin_id,
@@ -100,7 +108,7 @@ async def create_classroom(
         db.refresh(classroom)
         return {
             **{k: getattr(classroom, k) for k in [
-                'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+                'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
             ]},
             'teacher_details': _person_summaries(db, Teacher, 'teacher_id', classroom.teacher_ids),
             'student_details': _person_summaries(db, Student, 'student_id', classroom.student_ids),
@@ -117,7 +125,7 @@ def get_all_classrooms(db: Session = Depends(get_db)):
     for c in classrooms:
         result.append({
             **{k: getattr(c, k) for k in [
-                'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+                'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
             ]},
             'teacher_details': _person_summaries(db, Teacher, 'teacher_id', c.teacher_ids),
             'student_details': _person_summaries(db, Student, 'student_id', c.student_ids),
@@ -132,7 +140,7 @@ def get_classroom_by_id(class_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Classroom not found")
     return {
         **{k: getattr(classroom, k) for k in [
-            'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+            'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
         ]},
         'teacher_details': _person_summaries(db, Teacher, 'teacher_id', classroom.teacher_ids),
         'student_details': _person_summaries(db, Student, 'student_id', classroom.student_ids),
@@ -147,7 +155,7 @@ def get_classrooms_by_teacher(teacher_id: str, db: Session = Depends(get_db)):
         if c.teacher_ids and teacher_id in (c.teacher_ids or []):
             result.append({
                 **{k: getattr(c, k) for k in [
-                    'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+                    'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
                 ]},
                 'teacher_details': _person_summaries(db, Teacher, 'teacher_id', c.teacher_ids),
                 'student_details': _person_summaries(db, Student, 'student_id', c.student_ids),
@@ -163,7 +171,7 @@ def get_classrooms_by_student(student_id: str, db: Session = Depends(get_db)):
         if c.student_ids and student_id in (c.student_ids or []):
             result.append({
                 **{k: getattr(c, k) for k in [
-                    'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+                    'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
                 ]},
                 'teacher_details': _person_summaries(db, Teacher, 'teacher_id', c.teacher_ids),
                 'student_details': _person_summaries(db, Student, 'student_id', c.student_ids),
@@ -178,7 +186,7 @@ def get_classrooms_by_admin(admin_id: str, db: Session = Depends(get_db)):
     for c in classrooms:
         result.append({
             **{k: getattr(c, k) for k in [
-                'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+                'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
             ]},
             'teacher_details': _person_summaries(db, Teacher, 'teacher_id', c.teacher_ids),
             'student_details': _person_summaries(db, Student, 'student_id', c.student_ids),
@@ -235,7 +243,7 @@ async def update_classroom_by_teacher(
     db.refresh(classroom)
     return {
         **{k: getattr(classroom, k) for k in [
-            'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+            'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
         ]},
         'teacher_details': _person_summaries(db, Teacher, 'teacher_id', classroom.teacher_ids),
         'student_details': _person_summaries(db, Student, 'student_id', classroom.student_ids),
@@ -275,7 +283,29 @@ async def update_classroom_by_admin(
     db.refresh(classroom)
     return {
         **{k: getattr(classroom, k) for k in [
-            'class_id', 'class_name', 'class_description', 'class_photo', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+            'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
+        ]},
+        'teacher_details': _person_summaries(db, Teacher, 'teacher_id', classroom.teacher_ids),
+        'student_details': _person_summaries(db, Student, 'student_id', classroom.student_ids),
+    }
+
+class MeetLinkUpdate(BaseModel):
+    meet_link: str
+
+# Update classroom meet link
+@router.put("/update-meet-link/{class_id}", response_model=ClassroomResponse)
+def update_classroom_meet_link(class_id: str, payload: MeetLinkUpdate, db: Session = Depends(get_db)):
+    classroom = db.query(Classroom).filter(Classroom.class_id == class_id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    
+    classroom.meet_link = payload.meet_link
+    classroom.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(classroom)
+    return {
+        **{k: getattr(classroom, k) for k in [
+            'class_id', 'class_name', 'class_description', 'class_photo', 'meet_link', 'class_date', 'class_time', 'teacher_ids', 'student_ids', 'admin_id', 'created_at', 'updated_at'
         ]},
         'teacher_details': _person_summaries(db, Teacher, 'teacher_id', classroom.teacher_ids),
         'student_details': _person_summaries(db, Student, 'student_id', classroom.student_ids),
