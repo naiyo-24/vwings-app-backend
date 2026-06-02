@@ -1,24 +1,20 @@
-import os
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from db import engine
+from sqlalchemy import text
 
-load_dotenv()
-
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME")
-
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-engine = create_engine(DATABASE_URL)
-
-try:
+def alter_table():
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE classrooms ADD COLUMN meet_link VARCHAR;"))
-        conn.execute(text("ALTER TABLE classrooms ADD COLUMN class_date VARCHAR;"))
-        conn.execute(text("ALTER TABLE classrooms ADD COLUMN class_time VARCHAR;"))
-        conn.commit()
-    print("Successfully added columns to classrooms.")
-except Exception as e:
-    print(f"Error: {e}")
+        try:
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN fixed_salary FLOAT DEFAULT 0.0;"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN commission_per_student FLOAT DEFAULT 0.0;"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN referrals_admitted INTEGER DEFAULT 0;"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN total_salary FLOAT DEFAULT 0.0;"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN payment_mode VARCHAR DEFAULT 'NEFT';"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN transaction_id VARCHAR;"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN status VARCHAR DEFAULT 'Paid';"))
+            conn.commit()
+            print("Successfully altered table")
+        except Exception as e:
+            print("Error altering table:", e)
+
+if __name__ == '__main__':
+    alter_table()

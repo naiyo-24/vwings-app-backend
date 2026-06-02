@@ -8,8 +8,12 @@ from datetime import datetime
 from db import get_db
 from models.auth.student_models import Student
 from models.courses.course_models import Course
+from models.fees.fees_models import Fee, StudentFeeProfile
 from services.student_id_generator import generate_student_id
+from services.fees_id_generator import generate_fee_id
 from pydantic import BaseModel, EmailStr, Field
+from routes.fees.fees_routes import generate_pdf_receipt
+from routes.notification.notification_routes import create_notification
 
 router = APIRouter(
 	prefix="/api/students",
@@ -75,6 +79,11 @@ async def create_student(
 	interests: Optional[str] = Form(None),  # JSON string
 	hobbies: Optional[str] = Form(None),    # JSON string
 	password: str = Form(...),
+	payment_mode: Optional[str] = Form("online"),
+	payment_plan: Optional[str] = Form("full"),
+	amount_paid: Optional[float] = Form(0.0),
+	cheque_no: Optional[str] = Form(None),
+	dd_no: Optional[str] = Form(None),
 	profile_photo: Optional[UploadFile] = File(None),
 	db: Session = Depends(get_db)
 ):
@@ -125,8 +134,67 @@ async def create_student(
 		updated_at=now
 	)
 	db.add(db_student)
+	
+	# Handle Onboarding Fee Profile & Cash Payment
+	course_fee = 0.0
+	if course.general_data and "course_fees" in course.general_data:
+		course_fee = float(course.general_data["course_fees"])
+		
+	fee_profile = StudentFeeProfile(
+		student_id=student_id,
+		total_fee=course_fee,
+		payment_plan=payment_plan,
+		created_at=now,
+		updated_at=now
+	)
+	db.add(fee_profile)
+	
+	if payment_mode.lower() in ["cash", "cheque", "demand_draft"] and amount_paid > 0:
+		txn_prefix = "CASH"
+		if payment_mode.lower() == "cheque":
+			txn_prefix = "CHEQUE"
+		elif payment_mode.lower() == "demand_draft":
+			txn_prefix = "DD"
+		cash_txn_id = f"{txn_prefix}_{int(now.timestamp())}"
+		fee_id = generate_fee_id(now)
+		cash_fee = Fee(
+			fee_id=fee_id,
+			student_id=student_id,
+			installment_no=1 if payment_plan == "installment" else 0,
+			payment_type=payment_plan,
+			payment_mode=payment_mode.lower(),
+			cheque_no=cheque_no,
+			dd_no=dd_no,
+			amount=amount_paid,
+			payment_status="completed",
+			razorpay_payment_id=cash_txn_id,
+			created_at=now,
+			updated_at=now
+		)
+		db.add(cash_fee)
+		db.commit()
+		db.refresh(cash_fee)
+		receipt_path = generate_pdf_receipt(cash_fee, db_student, course)
+		cash_fee.file_path = receipt_path
+
 	db.commit()
 	db.refresh(db_student)
+	
+	# Notify the student
+	create_notification(
+		"Welcome to VWings24x7! 🎉",
+		f"Hi {full_name}, your account has been successfully created. Welcome aboard!",
+		"student",
+		student_id
+	)
+	
+	# Notify the admins
+	create_notification(
+		"New Student Onboarded",
+		f"{full_name} has been successfully registered to '{course.course_name}'.",
+		"admin"
+	)
+
 	return StudentOut(
 		**db_student.__dict__,
 		course_name=course.course_name

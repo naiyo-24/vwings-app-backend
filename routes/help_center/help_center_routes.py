@@ -4,9 +4,9 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from uuid import uuid4
 from services.report_id_generator import generate_report_id
-
 from db import get_db
 from models.help_center.help_center_models import HelpCenter
+from routes.notification.notification_routes import create_notification
 
 router = APIRouter(prefix="/api/helpcenter", tags=["HelpCenter"])
 
@@ -47,6 +47,13 @@ def create_help_report(payload: HelpCenterCreate, db: Session = Depends(get_db))
     db.add(help_item)
     db.commit()
     db.refresh(help_item)
+    
+    create_notification(
+        "New Help Request",
+        f"A new support request was opened by {payload.name}.",
+        "admin"
+    )
+    
     return help_item
 
 # List all help reports
@@ -73,6 +80,13 @@ def update_help_status(report_id: str, payload: HelpCenterStatusUpdate, db: Sess
     db.add(item)
     db.commit()
     db.refresh(item)
+    
+    create_notification(
+        "Help Request Updated",
+        f"The status of help request {report_id} has been changed to {payload.status}.",
+        "admin"
+    )
+    
     return item
 
 # Delete help report by report_id

@@ -10,6 +10,7 @@ from pathlib import Path
 from db import get_db
 from models.courses.course_models import Course
 from services.course_id_generator import generate_course_id
+from routes.notification.notification_routes import create_notification
 
 router = APIRouter(
     prefix="/api/courses",
@@ -175,6 +176,24 @@ def create_course(
     db.add(new_course)
     db.commit()
     db.refresh(new_course)
+    
+    # Notify all students, teachers, and counsellors
+    create_notification(
+        "New Course Available! 🎓", 
+        f"We just added '{new_course.course_name}'. Check it out now!", 
+        "student"
+    )
+    create_notification(
+        "New Course Created", 
+        f"Course '{new_course.course_name}' has been successfully created.", 
+        "admin"
+    )
+    create_notification(
+        "New Course Catalog", 
+        f"You can now assign students to '{new_course.course_name}'.", 
+        "counsellor"
+    )
+
     return new_course
 
 @router.get("/get-all", response_model=List[CourseResponse])

@@ -11,6 +11,7 @@ from models.courses.course_models import Course
 from services.teacher_id_generator import generate_teacher_id
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from routes.notification.notification_routes import create_notification
 
 router = APIRouter(prefix="/api/teachers", tags=["Teachers"])
 
@@ -163,6 +164,19 @@ async def create_teacher(
 	db.add(db_teacher)
 	db.commit()
 	db.refresh(db_teacher)
+
+	# Notify Teacher and Admin
+	create_notification(
+		"Welcome to VWings24x7! 🎉",
+		f"Hi {full_name}, your teacher account has been successfully created.",
+		"teacher",
+		teacher_id
+	)
+	create_notification(
+		"New Faculty Onboarded",
+		f"{full_name} has been added as a Teacher.",
+		"admin"
+	)
 
 	# return using same pattern as student_routes
 	return TeacherOut(**{**db_teacher.__dict__})

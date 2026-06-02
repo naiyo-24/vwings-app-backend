@@ -16,6 +16,7 @@ from routes.classroom import class_chat_routes
 from routes.commission import commission_routes
 from routes.salary import salary_routes
 from routes.fees import fees_routes
+from routes.notification import notification_routes
 
 # Create FastAPI app
 app = FastAPI(
@@ -74,12 +75,40 @@ app.include_router(class_chat_routes.router)
 app.include_router(commission_routes.router)
 app.include_router(salary_routes.router)
 app.include_router(fees_routes.router)
+app.include_router(notification_routes.router)
 
 # Create database tables on startup
 @app.on_event("startup")
 def on_startup():
     print("Creating database tables...")
     create_tables()
+    
+    # Auto-migrate payment_mode column
+    from db import engine
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE fees ADD COLUMN payment_mode VARCHAR DEFAULT 'online'"))
+            print("Successfully added payment_mode column to fees table.")
+    except Exception as e:
+        # Expected if column already exists
+        pass
+
+    # Auto-migrate salaries columns
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN fixed_salary FLOAT DEFAULT 0.0"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN commission_per_student FLOAT DEFAULT 0.0"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN referrals_admitted INTEGER DEFAULT 0"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN total_salary FLOAT DEFAULT 0.0"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN payment_mode VARCHAR DEFAULT 'NEFT'"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN transaction_id VARCHAR"))
+            conn.execute(text("ALTER TABLE salaries ADD COLUMN status VARCHAR DEFAULT 'Paid'"))
+            conn.execute(text("ALTER TABLE salaries ALTER COLUMN file_path DROP NOT NULL"))
+            print("Successfully added new columns to salaries table.")
+    except Exception as e:
+        pass
+        
     print("Database tables created successfully!")
 
 # Root endpoint

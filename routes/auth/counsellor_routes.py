@@ -15,6 +15,7 @@ from datetime import datetime
 from models.admission.admission_enquiry_models import AdmissionEnquiry
 from models.admission.admission_code_models import AdmissionCode
 from models.commission.commission_models import CommissionSlip
+from routes.notification.notification_routes import create_notification
 
 router = APIRouter(prefix="/api/counsellors", tags=["Counsellors"])
 
@@ -128,6 +129,9 @@ class CounsellorBase(BaseModel):
     branch_name: Optional[str] = None
     ifsc_code: Optional[str] = None
     upi_id: Optional[str] = None
+    commission_per_student: Optional[float] = 0.0
+    commission_type: Optional[str] = "default"
+    commission_value: Optional[float] = 0.0
     per_courses_commission: Optional[Dict[str, Dict[str, Any]]] = None
     profile_photo: Optional[str] = None
 
@@ -149,6 +153,9 @@ class CounsellorUpdate(BaseModel):
     branch_name: Optional[str] = None
     ifsc_code: Optional[str] = None
     upi_id: Optional[str] = None
+    commission_per_student: Optional[float] = None
+    commission_type: Optional[str] = None
+    commission_value: Optional[float] = None
     per_courses_commission: Optional[Dict[str, Dict[str, Any]]] = None
     password: Optional[str] = None
     profile_photo: Optional[str] = None
@@ -178,6 +185,9 @@ async def create_counsellor(
     branch_name: Optional[str] = Form(None),
     ifsc_code: Optional[str] = Form(None),
     upi_id: Optional[str] = Form(None),
+    commission_per_student: Optional[float] = Form(0.0),
+    commission_type: Optional[str] = Form("default"),
+    commission_value: Optional[float] = Form(0.0),
     password: str = Form(...),
     profile_photo: Optional[UploadFile] = File(None),
     profile_photo_path: Optional[str] = Form(None),
@@ -230,6 +240,9 @@ async def create_counsellor(
         branch_name=branch_name,
         ifsc_code=ifsc_code,
         upi_id=upi_id,
+        commission_per_student=commission_per_student,
+        commission_type=commission_type,
+        commission_value=commission_value,
         password=password,
         profile_photo=profile_photo_path,
         created_at=now,
@@ -240,6 +253,20 @@ async def create_counsellor(
     db.refresh(db_obj)
 
     per_courses_commission_out = format_per_courses_commission_for_output(db, db_obj.per_courses_commission)
+    
+    # Notify Counsellor and Admin
+    create_notification(
+        "Welcome to VWings24x7! 🎉",
+        f"Hi {full_name}, your counsellor account has been successfully created.",
+        "counsellor",
+        counsellor_id
+    )
+    create_notification(
+        "New Counsellor Onboarded",
+        f"{full_name} has been added as an Admission Counsellor.",
+        "admin"
+    )
+
     return CounsellorOut(**{**db_obj.__dict__, "per_courses_commission": per_courses_commission_out})
 
 
@@ -313,6 +340,9 @@ async def update_counsellor(
     branch_name: Optional[str] = Form(None),
     ifsc_code: Optional[str] = Form(None),
     upi_id: Optional[str] = Form(None),
+    commission_per_student: Optional[float] = Form(None),
+    commission_type: Optional[str] = Form(None),
+    commission_value: Optional[float] = Form(None),
     password: Optional[str] = Form(None),
     profile_photo: Optional[UploadFile] = File(None),
     profile_photo_path: Optional[str] = Form(None),
@@ -347,6 +377,12 @@ async def update_counsellor(
         update_data["ifsc_code"] = ifsc_code
     if upi_id is not None:
         update_data["upi_id"] = upi_id
+    if commission_per_student is not None:
+        update_data["commission_per_student"] = commission_per_student
+    if commission_type is not None:
+        update_data["commission_type"] = commission_type
+    if commission_value is not None:
+        update_data["commission_value"] = commission_value
     if password is not None:
         update_data["password"] = password
 

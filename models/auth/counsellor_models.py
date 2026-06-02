@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, JSON
+from sqlalchemy import Column, String, Text, DateTime, JSON, Float
 from datetime import datetime
 from db import Base
 
@@ -20,6 +20,10 @@ class Counsellor(Base):
 	upi_id = Column(String, nullable=True)
 	# per_courses_commission stores a mapping of course_id -> commission_percentage (e.g. {"COURSE4220": 10.5})
 	per_courses_commission = Column(JSON, nullable=True)
+	commission_per_student = Column(Float, default=0.0)
+	commission_type = Column(String, nullable=True, default="default") # 'fixed', 'percentage', 'default'
+	commission_value = Column(Float, nullable=True, default=0.0)
+	status = Column(String, default="active")
 	profile_photo = Column(String, nullable=True)
 	password = Column(String, nullable=False)
 	created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

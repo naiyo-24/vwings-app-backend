@@ -16,6 +16,8 @@ class ClassChatMessage(Base):
     sender_id = Column(String, nullable=False)
     sender_role = Column(String, nullable=False)  # e.g., 'admin', 'teacher', 'student'
     content = Column(Text, nullable=False)
+    attachment_url = Column(String, nullable=True)
+    attachment_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     def __repr__(self):

@@ -11,6 +11,10 @@ import asyncio
 from models.auth.student_models import Student
 from models.auth.teacher_models import Teacher
 from models.auth.admin_models import Admin
+from fastapi import UploadFile, File, Form
+import os
+import shutil
+from uuid import uuid4
 
 router = APIRouter(prefix="/api/classrooms", tags=["ClassroomChat"])
 
@@ -80,6 +84,8 @@ def get_messages(class_id: str, db: Session = Depends(get_db)):
             "sender_role": m.sender_role,
             "sender_name": _resolve_sender_name(db, m.sender_role, m.sender_id),
             "content": m.content,
+            "attachment_url": m.attachment_url,
+            "attachment_type": m.attachment_type,
             "created_at": m.created_at,
         }
         for m in msgs
@@ -96,11 +102,16 @@ def post_message(class_id: str, payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="sender_id, sender_role and content required")
     if not is_admin_or_teacher_for_class(db, class_id, sender_id):
         raise HTTPException(status_code=403, detail="Only class admins (teachers/admin) can post messages")
+    attachment_url = payload.get("attachment_url")
+    attachment_type = payload.get("attachment_type")
+    
     msg = ClassChatMessage(
         class_id=class_id,
         sender_id=sender_id,
         sender_role=sender_role,
         content=content,
+        attachment_url=attachment_url,
+        attachment_type=attachment_type,
         created_at=datetime.utcnow(),
     )
     db.add(msg)
@@ -117,6 +128,8 @@ def post_message(class_id: str, payload: dict, db: Session = Depends(get_db)):
             "sender_role": msg.sender_role,
             "sender_name": sender_name,
             "content": msg.content,
+            "attachment_url": msg.attachment_url,
+            "attachment_type": msg.attachment_type,
             "created_at": msg.created_at.isoformat(),
         }))
 
@@ -178,12 +191,17 @@ async def websocket_chat(websocket: WebSocket, class_id: str, user_id: str = Non
                     await websocket.send_text(json.dumps({"error": "not authorized to send messages"}))
                     continue
 
+            attachment_url = payload.get("attachment_url")
+            attachment_type = payload.get("attachment_type")
+
             # persist message
             msg = ClassChatMessage(
                 class_id=class_id,
                 sender_id=sender_id,
                 sender_role=sender_role,
                 content=content,
+                attachment_url=attachment_url,
+                attachment_type=attachment_type,
                 created_at=datetime.utcnow(),
             )
             db.add(msg)
@@ -198,6 +216,8 @@ async def websocket_chat(websocket: WebSocket, class_id: str, user_id: str = Non
                 "sender_role": msg.sender_role,
                 "sender_name": _resolve_sender_name(db, msg.sender_role, msg.sender_id),
                 "content": msg.content,
+                "attachment_url": msg.attachment_url,
+                "attachment_type": msg.attachment_type,
                 "created_at": msg.created_at.isoformat(),
             })
 
@@ -246,6 +266,8 @@ def student_get_messages(class_id: str, student_id: str, db: Session = Depends(g
             "sender_role": m.sender_role,
             "sender_name": _resolve_sender_name(db, m.sender_role, m.sender_id),
             "content": m.content,
+            "attachment_url": m.attachment_url,
+            "attachment_type": m.attachment_type,
             "created_at": m.created_at,
         }
         for m in msgs
@@ -262,11 +284,16 @@ def student_post_message(class_id: str, payload: dict, student_id: str, db: Sess
     content = payload.get("content")
     if not content:
         raise HTTPException(status_code=400, detail="content required")
+    attachment_url = payload.get("attachment_url")
+    attachment_type = payload.get("attachment_type")
+
     msg = ClassChatMessage(
         class_id=class_id,
         sender_id=student_id,
         sender_role="student",
         content=content,
+        attachment_url=attachment_url,
+        attachment_type=attachment_type,
         created_at=datetime.utcnow(),
     )
     db.add(msg)
@@ -282,8 +309,31 @@ def student_post_message(class_id: str, payload: dict, student_id: str, db: Sess
             "sender_role": msg.sender_role,
             "sender_name": _resolve_sender_name(db, msg.sender_role, msg.sender_id),
             "content": msg.content,
+            "attachment_url": msg.attachment_url,
+            "attachment_type": msg.attachment_type,
             "created_at": msg.created_at.isoformat(),
         }))
 
     threading.Thread(target=_broadcast_student, daemon=True).start()
     return {"message_id": msg.message_id}
+
+@router.post("/upload-attachment")
+async def upload_attachment(file: UploadFile = File(...)):
+    UPLOAD_DIR = "uploads/chat_attachments"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    file_id = str(uuid4().hex[:8])
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{file_id}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    attachment_type = "image" if ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp'] else "pdf" if ext.lower() == '.pdf' else "file"
+    
+    return {
+        "url": file_path.replace("\\", "/"),
+        "type": attachment_type
+    }
+

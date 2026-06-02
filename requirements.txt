@@ -5,3 +5,5 @@ psycopg2-binary
 python-dotenv
 pydantic[email]
 python-multipart
+razorpay
+reportlab

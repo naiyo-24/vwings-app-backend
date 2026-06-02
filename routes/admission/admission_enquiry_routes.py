@@ -9,10 +9,13 @@ from db import get_db
 from models.admission.admission_enquiry_models import AdmissionEnquiry
 from models.auth.counsellor_models import Counsellor
 from models.admission.admission_code_models import AdmissionCode
+from models.admission.student_admission_models import StudentAdmission
 from models.courses.course_models import Course
 from services.admission_enquiry_id_generator import generate_admission_enquiry_id
 from models.auth.student_models import Student
+import uuid
 from services.student_id_generator import generate_student_id
+from routes.notification.notification_routes import create_notification
 
 router = APIRouter(prefix="/api/admission-enquiries", tags=["AdmissionEnquiries"])
 
@@ -143,6 +146,34 @@ def create_admission_enquiry(payload: AdmissionEnquiryCreate, db: Session = Depe
                 updated_at=now
             )
             db.add(new_student)
+            
+            # Create StudentFeeProfile
+            course = db.query(Course).filter_by(course_id=payload.course_id).first()
+            course_fee = 0.0
+            if course and course.general_data and "course_fees" in course.general_data:
+                course_fee = float(course.general_data["course_fees"])
+            
+            from models.fees.fees_models import StudentFeeProfile
+            fee_profile = StudentFeeProfile(
+                student_id=student_id,
+                total_fee=course_fee,
+                payment_plan="full",
+                created_at=now,
+                updated_at=now
+            )
+            db.add(fee_profile)
+            
+            # Create Student Admission record
+            admission_record = StudentAdmission(
+                admission_id=str(uuid.uuid4()),
+                student_id=student_id,
+                counsellor_id=payload.counsellor_id,
+                course_id=payload.course_id,
+                admission_date=now.date(),
+                created_at=now,
+                updated_at=now
+            )
+            db.add(admission_record)
 
     db.commit()
     db.refresh(enq)
@@ -153,6 +184,20 @@ def create_admission_enquiry(payload: AdmissionEnquiryCreate, db: Session = Depe
     data["counsellor_name"] = counsellor.full_name if counsellor and hasattr(counsellor, "full_name") else None
     data["course_category"] = data.get("course_category")
     print("update_enquiry_status returning data keys:", list(data.keys()))
+    
+    # Notify Admin and Counsellor about the new enquiry
+    create_notification(
+        "New Enquiry Created",
+        f"A new admission enquiry for {payload.student_name} was created.",
+        "admin"
+    )
+    create_notification(
+        "Enquiry Assigned",
+        f"You have been assigned a new enquiry for {payload.student_name}.",
+        "counsellor",
+        payload.counsellor_id
+    )
+
     return data
 
 
@@ -211,6 +256,8 @@ def update_enquiry_status(enquiry_id: str, payload: AdmissionEnquiryStatusUpdate
         student_id = generate_student_id(datetime.utcnow())
         student_email = item.student_email if item.student_email else f"{student_id.lower()}@vwings.com"
         existing_student = db.query(Student).filter((Student.email == student_email) | (Student.phone_no == item.student_phn_no)).first()
+        target_student_id = existing_student.student_id if existing_student else student_id
+        
         if not existing_student:
             new_student = Student(
                 student_id=student_id,
@@ -226,6 +273,36 @@ def update_enquiry_status(enquiry_id: str, payload: AdmissionEnquiryStatusUpdate
                 updated_at=datetime.utcnow()
             )
             db.add(new_student)
+            
+            # Create StudentFeeProfile
+            course = db.query(Course).filter_by(course_id=item.course_id).first()
+            course_fee = 0.0
+            if course and course.general_data and "course_fees" in course.general_data:
+                course_fee = float(course.general_data["course_fees"])
+            
+            from models.fees.fees_models import StudentFeeProfile
+            fee_profile = StudentFeeProfile(
+                student_id=student_id,
+                total_fee=course_fee,
+                payment_plan="full",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(fee_profile)
+            
+        # Create Student Admission record if it doesn't exist for this course
+        existing_admission = db.query(StudentAdmission).filter_by(student_id=target_student_id, course_id=item.course_id).first()
+        if not existing_admission:
+            admission_record = StudentAdmission(
+                admission_id=str(uuid.uuid4()),
+                student_id=target_student_id,
+                counsellor_id=item.counsellor_id,
+                course_id=item.course_id,
+                admission_date=datetime.utcnow().date(),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(admission_record)
 
     item.status = payload.status
     item.updated_at = datetime.utcnow()
@@ -259,6 +336,20 @@ def update_enquiry_status(enquiry_id: str, payload: AdmissionEnquiryStatusUpdate
         "course_name": course.course_name if course else None,
         "counsellor_name": counsellor.full_name if counsellor and hasattr(counsellor, "full_name") else None,
     }
+
+    # Notify on conversion
+    if payload.status == "converted" and item.status == "converted":
+        create_notification(
+            "Enquiry Converted! 🎉",
+            f"The enquiry for {item.student_name} has been successfully converted into an admission.",
+            "admin"
+        )
+        create_notification(
+            "Successful Conversion! 🎯",
+            f"Great job! The enquiry for {item.student_name} was successfully converted.",
+            "counsellor",
+            item.counsellor_id
+        )
 
     return resp
 
@@ -303,22 +394,26 @@ def update_enquiry(enquiry_id: str, payload: AdmissionEnquiryUpdate, db: Session
             raise HTTPException(status_code=403, detail="Existing admission code not assigned to the new counsellor")
         item.counsellor_id = payload.counsellor_id
 
+    old_status = item.status
+
     for field, value in payload.dict(exclude_unset=True).items():
         if hasattr(item, field) and field not in ("counsellor_id", "admission_code"):
             setattr(item, field, value)
 
     # Check if we need to create or delete a student based on status change
-    if payload.status is not None and payload.status != item.status:
-        if item.status == "converted" and payload.status != "converted":
+    if payload.status is not None and payload.status != old_status:
+        if old_status == "converted" and payload.status != "converted":
             search_email = item.student_email if item.student_email else ""
             student = db.query(Student).filter((Student.email == search_email) | (Student.phone_no == item.student_phn_no)).first()
             if student:
                 db.delete(student)
-        elif item.status != "converted" and payload.status == "converted":
+        elif old_status != "converted" and payload.status == "converted":
             student_id = generate_student_id(datetime.utcnow())
             student_email = payload.student_email if payload.student_email else (item.student_email if item.student_email else f"{student_id.lower()}@vwings.com")
             student_phn = payload.student_phn_no if payload.student_phn_no else item.student_phn_no
             existing_student = db.query(Student).filter((Student.email == student_email) | (Student.phone_no == student_phn)).first()
+            target_student_id = existing_student.student_id if existing_student else student_id
+            
             if not existing_student:
                 new_student = Student(
                     student_id=student_id,
@@ -334,6 +429,35 @@ def update_enquiry(enquiry_id: str, payload: AdmissionEnquiryUpdate, db: Session
                     updated_at=datetime.utcnow()
                 )
                 db.add(new_student)
+                
+                # Create StudentFeeProfile
+                course = db.query(Course).filter_by(course_id=item.course_id).first()
+                course_fee = 0.0
+                if course and course.general_data and "course_fees" in course.general_data:
+                    course_fee = float(course.general_data["course_fees"])
+                
+                from models.fees.fees_models import StudentFeeProfile
+                fee_profile = StudentFeeProfile(
+                    student_id=student_id,
+                    total_fee=course_fee,
+                    payment_plan="full",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(fee_profile)
+                
+            existing_admission = db.query(StudentAdmission).filter_by(student_id=target_student_id, course_id=item.course_id).first()
+            if not existing_admission:
+                admission_record = StudentAdmission(
+                    admission_id=str(uuid.uuid4()),
+                    student_id=target_student_id,
+                    counsellor_id=item.counsellor_id,
+                    course_id=item.course_id,
+                    admission_date=datetime.utcnow().date(),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(admission_record)
         
         item.status = payload.status
 
