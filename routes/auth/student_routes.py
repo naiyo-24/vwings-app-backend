@@ -343,6 +343,16 @@ def delete_student(student_id: str, db: Session = Depends(get_db)):
 	student = db.query(Student).filter_by(student_id=student_id).first()
 	if not student:
 		raise HTTPException(status_code=404, detail="Student not found.")
+	
+	from models.fees.fees_models import Fee, StudentFeeProfile
+	from models.commission.commission_models import CommissionLedger
+	from models.admission.student_admission_models import StudentAdmission
+
+	db.query(CommissionLedger).filter_by(student_id=student_id).delete(synchronize_session=False)
+	db.query(Fee).filter_by(student_id=student_id).delete(synchronize_session=False)
+	db.query(StudentFeeProfile).filter_by(student_id=student_id).delete(synchronize_session=False)
+	db.query(StudentAdmission).filter_by(student_id=student_id).delete(synchronize_session=False)
+
 	db.delete(student)
 	db.commit()
 	return
@@ -356,6 +366,16 @@ def bulk_delete_students(request: BulkDeleteRequest, db: Session = Depends(get_d
 	students = db.query(Student).filter(Student.student_id.in_(request.student_ids)).all()
 	if not students:
 		raise HTTPException(status_code=404, detail="No students found for given IDs.")
+	
+	from models.fees.fees_models import Fee, StudentFeeProfile
+	from models.commission.commission_models import CommissionLedger
+	from models.admission.student_admission_models import StudentAdmission
+
+	db.query(CommissionLedger).filter(CommissionLedger.student_id.in_(request.student_ids)).delete(synchronize_session=False)
+	db.query(Fee).filter(Fee.student_id.in_(request.student_ids)).delete(synchronize_session=False)
+	db.query(StudentFeeProfile).filter(StudentFeeProfile.student_id.in_(request.student_ids)).delete(synchronize_session=False)
+	db.query(StudentAdmission).filter(StudentAdmission.student_id.in_(request.student_ids)).delete(synchronize_session=False)
+
 	for student in students:
 		db.delete(student)
 	db.commit()
