@@ -58,6 +58,8 @@ def health_check():
         "message": "Server is running successfully"
     }
 
+from routes.search import search_routes
+
 # Register routers
 app.include_router(admin_routes.router)
 app.include_router(course_routes.router)
@@ -76,6 +78,7 @@ app.include_router(commission_routes.router)
 app.include_router(salary_routes.router)
 app.include_router(fees_routes.router)
 app.include_router(notification_routes.router)
+app.include_router(search_routes.router)
 
 # Create database tables on startup
 @app.on_event("startup")
